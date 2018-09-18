@@ -18,4 +18,4 @@ module_init(initFS);
 module_exit(exitFS);
 
 MODULE_AUTHOR("Gordiig");
-MODULE_LICENSE("MIT");
+MODULE_LICENSE("GPL");
