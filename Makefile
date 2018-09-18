@@ -1,19 +1,12 @@
-ifneq ($(KERNELRELEASE),)
-	objs-m := main.o
+obj-m += gfs.o
 
-else
-	CURRENT = $(shell uname -r)
-	KDIR = /lib/modules/$(CURRENT)/build
-	PWD = $(shell pwd)
+CURRENT = $(shell uname -r)
+KDIR = /lib/modules/$(CURRENT)/build
+PWD = $(shell pwd)
 
-default:
-	sudo $(MAKE) -C $(KDIR) M=$(PWD) modules
+all:
+	sudo make -C $(KDIR) M=$(PWD) modules
 	sudo make clean
 
 clean:
-	rm *.o
-	rm *.mod.c
-	rm *.symvers
-	rm *.order
-
-endif
+	sudo make -C $(KDIR) M=$(PWD) clean
