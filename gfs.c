@@ -13,7 +13,7 @@ static int gfsFillSuper(struct super_block *sb, void *data, int silent);
 
 static struct file_system_type gfsType = {
     .owner = THIS_MODULE,
-    .name = "GFS",
+    .name = "gfs",
     .mount = gfsGetSuper,
     .kill_sb = kill_block_super,
 };
