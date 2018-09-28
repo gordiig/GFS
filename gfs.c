@@ -8,13 +8,13 @@
 
 #define GFS_MAGIC_NUMBER 0x13420228
 
-static struct dentry* gfsGetSuper(struct file_system_type *fst, int flags, const char *devname, void *data);
+static struct dentry* gfsMount(struct file_system_type *fst, int flags, const char *devname, void *data);
 static int gfsFillSuper(struct super_block *sb, void *data, int silent);
 
 static struct file_system_type gfsType = {
     .owner = THIS_MODULE,
     .name = "gfs",
-    .mount = gfsGetSuper,
+    .mount = gfsMount,
     .kill_sb = kill_block_super,
 };
 
@@ -23,7 +23,7 @@ static struct super_operations gfsSbOp = {
     .drop_inode = generic_drop_inode,
 };
 
-static struct dentry* gfsGetSuper(struct file_system_type *fst, int flags, const char *dev_name, void *data)
+static struct dentry* gfsMount(struct file_system_type *fst, int flags, const char *dev_name, void *data)
 {
     struct dentry *ret = mount_bdev(fst, flags, dev_name, data, gfsFillSuper);
     if (IS_ERR(ret))
