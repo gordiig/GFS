@@ -10,6 +10,7 @@
 
 static struct dentry* gfsMount(struct file_system_type *fst, int flags, const char *devname, void *data);
 static int gfsFillSuper(struct super_block *sb, void *data, int silent);
+static void gfsPutSuper(struct super_block *sb);
 
 static struct file_system_type gfsType = {
     .owner = THIS_MODULE,
@@ -21,7 +22,13 @@ static struct file_system_type gfsType = {
 static struct super_operations gfsSbOp = {
     .statfs = simple_statfs,
     .drop_inode = generic_drop_inode,
+    .put_super = gfsPutSuper,
 };
+
+static void gfsPutSuper(struct super_block *sb)
+{
+    printk(KERN_INFO "GFS put_super was called! Bye-bye!\n");
+}
 
 static struct dentry* gfsMount(struct file_system_type *fst, int flags, const char *dev_name, void *data)
 {
