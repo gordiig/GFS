@@ -71,6 +71,11 @@ static int gfsFillSuper(struct super_block *sb, void *data, int silent)
     return 0;
 }
 
+void gfsKillSb(struct super_block *sb)
+{
+    kill_litter_super(sb);
+}
+
 
 // File
 static unsigned long gfsMMUGetUnmappedArea(struct file *file,
@@ -225,7 +230,7 @@ static struct file_system_type gfsType = {
     .owner = THIS_MODULE,
     .name = "gfs",
     .mount = gfsMount,
-    .kill_sb = kill_block_super,
+    .kill_sb = gfsKillSb,
     .fs_flags = FS_USERNS_MOUNT,
 };
 
