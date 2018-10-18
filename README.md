@@ -5,7 +5,7 @@ FS for Linux based on VFS
 ```console
 foo@bar:~? sudo make
 foo@bar:~? sudo insmod gfs.ko
-foo@bar:~? sudo mount -o loop -t gfs ./image ./gfs_mount
+foo@bar:~? sudo mount -t gfs gfs ./gfs_mount
 ```
 
 - To fully unmount run

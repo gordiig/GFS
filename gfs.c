@@ -28,7 +28,7 @@ static void gfsPutSuper(struct super_block *sb)
 
 static struct dentry* gfsMount(struct file_system_type *fst, int flags, const char *dev_name, void *data)
 {
-    struct dentry *ret = mount_bdev(fst, flags, dev_name, data, gfsFillSuper);
+    struct dentry *ret = mount_nodev(fst, flags, data, gfsFillSuper);
     if (IS_ERR(ret))
     {
         printk(KERN_ERR "GFS Error in mount_bdev()!\n");
@@ -226,6 +226,7 @@ static struct file_system_type gfsType = {
     .name = "gfs",
     .mount = gfsMount,
     .kill_sb = kill_block_super,
+    .fs_flags = FS_USERNS_MOUNT,
 };
 
 static int __init initFS(void)
