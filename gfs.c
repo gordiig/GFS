@@ -47,18 +47,19 @@ static int gfsFillSuper(struct super_block *sb, void *data, int silent)
     sb->s_op = &gfsSbOp;
     sb->s_magic = GFS_MAGIC_NUMBER;
 
-    struct inode *rootInode = new_inode(sb);
+    // struct inode *rootInode = new_inode(sb);
+    struct inode *rootInode = gfsGetInode(sb, NULL, S_IFDIR, NULL);
     if (!rootInode)
     {
         printk(KERN_ERR "GFS new_inode() error!\n");
         return -1;
     }
 
-    rootInode->i_ino = 0;
-    rootInode->i_sb = sb;
-    rootInode->i_atime = rootInode->i_mtime = rootInode->i_ctime = CURRENT_TIME;
-    rootInode->i_mode = S_IFDIR;
-    inode_init_owner(rootInode, NULL, S_IFDIR);
+    // rootInode->i_ino = 0;
+    // rootInode->i_sb = sb;
+    // rootInode->i_atime = rootInode->i_mtime = rootInode->i_ctime = CURRENT_TIME;
+    // rootInode->i_mode = S_IFDIR;
+    // inode_init_owner(rootInode, NULL, S_IFDIR);
 
     struct dentry *rootDentry = d_make_root(rootInode);
     if (!rootDentry)
