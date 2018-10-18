@@ -8,6 +8,8 @@
 
 #define GFS_MAGIC_NUMBER 0x13420228
 
+static struct inode* gfsGetInode(struct super_block *sb, const struct inode *dir, umode_t mode, dev_t dev);
+
 // Superblock
 static struct dentry* gfsMount(struct file_system_type *fst, int flags, const char *devname, void *data);
 static int gfsFillSuper(struct super_block *sb, void *data, int silent);
@@ -40,8 +42,8 @@ static struct dentry* gfsMount(struct file_system_type *fst, int flags, const ch
 
 static int gfsFillSuper(struct super_block *sb, void *data, int silent)
 {
-    sb->s_blocksize = PAGE_CACHE_SIZE;
-    sb->s_blocksize_bits = PAGE_CACHE_SHIFT;
+    sb->s_blocksize = PAGE_SIZE; // PAGE_CACHE_SIZE;
+    sb->s_blocksize_bits = PAGE_SHIFT; // PAGE_CACHE_SHIFT
     sb->s_op = &gfsSbOp;
     sb->s_magic = GFS_MAGIC_NUMBER;
 
@@ -55,6 +57,7 @@ static int gfsFillSuper(struct super_block *sb, void *data, int silent)
     rootInode->i_ino = 0;
     rootInode->i_sb = sb;
     rootInode->i_atime = rootInode->i_mtime = rootInode->i_ctime = CURRENT_TIME;
+    rootInode->i_mode = S_IFDIR;
     inode_init_owner(rootInode, NULL, S_IFDIR);
 
     struct dentry *rootDentry = d_make_root(rootInode);
@@ -67,6 +70,154 @@ static int gfsFillSuper(struct super_block *sb, void *data, int silent)
 
     return 0;
 }
+
+
+// File
+static unsigned long gfsMMUGetUnmappedArea(struct file *file,
+		unsigned long addr, unsigned long len, unsigned long pgoff,
+		unsigned long flags);
+
+static struct file_operations gfsFileOps = {
+    .read_iter = generic_file_read_iter,
+    .write_iter = generic_file_write_iter,
+    .mmap = generic_file_mmap,
+    .fsync = generic_file_fsync,
+    .splice_read = generic_file_splice_read,
+    .splice_write = iter_file_splice_write,
+    .llseek = generic_file_llseek,
+    .get_unmapped_area = gfsMMUGetUnmappedArea,
+};
+
+static unsigned long gfsMMUGetUnmappedArea(struct file *file,
+		unsigned long addr, unsigned long len, unsigned long pgoff,
+		unsigned long flags)
+{
+    return current->mm->get_unmapped_area(file, addr, len, pgoff, flags);
+}
+
+
+// Inode
+static int gfsInodeMknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev);
+static int gfsInodeCreate(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl);
+static int gfsInodeMkdir(struct inode *dir, struct dentry *dentry, umode_t mode);
+static int gfsInodeSymlink(struct inode *dir, struct dentry *dentry, const char *symname);
+
+// static struct inode_operations gfsInodeOps = {
+//     .create = gfsInodeCreate,
+//     .mknod	= gfsInodeMknod,
+//     .mkdir	= gfsInodeMkdir,
+//     .symlink = gfsInodeSymlink,
+//     // .lookup = gfsInodeLookup,
+//     // .link	= gfsInodeLink,
+// 	// .unlink = gfsInodeUnlink,
+// 	// .rmdir	= gfsInodeRmdir,
+// 	// .rename	= gfsInodeRename,
+// }
+
+static struct inode_operations gfsInodeOps = {
+    .setattr = simple_setattr,
+    .getattr = simple_getattr,
+};
+
+static struct inode_operations gfsDirInodeOps = {
+    .create = gfsInodeCreate,
+    .mknod  = gfsInodeMknod,
+    .mkdir  = gfsInodeMkdir,
+    .symlink = gfsInodeSymlink,
+    .lookup = simple_lookup,
+    .link   = simple_link,
+    .unlink = simple_unlink,
+    .rmdir  = simple_rmdir,
+    .rename = simple_rename,
+};
+
+static struct inode* gfsGetInode(struct super_block *sb, const struct inode *dir, umode_t mode, dev_t dev)
+{
+    struct inode *new = new_inode(sb);
+
+    if (new)
+    {
+        new->i_ino = get_next_ino();
+        inode_init_owner(new, dir, mode);
+        new->i_atime = new->i_ctime = new->i_mtime = CURRENT_TIME;
+
+        switch (mode & S_IFMT)
+        {
+            case S_IFREG:
+                new->i_op = &gfsInodeOps;
+                new->i_fop = &gfsFileOps;
+                break;
+
+            case S_IFDIR:
+                new->i_op = &gfsDirInodeOps;
+                new->i_fop = &simple_dir_operations;
+                break;
+            default:
+                init_special_inode(new, mode, dev);
+                break;
+        }
+    }
+
+    return new;
+}
+
+static int gfsInodeMknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
+{
+    struct inode *inode = gfsGetInode(dir->i_sb, dir, mode, dev);
+    int err = -ENOSPC;
+
+    if (inode)
+    {
+        d_instantiate(dentry, inode);
+        dget(dentry);
+        err = 0;
+        dir->i_mtime = dir->i_ctime = CURRENT_TIME;
+    }
+
+    return err;
+}
+
+static int gfsInodeCreate(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
+{
+    return gfsInodeMknod(dir, dentry, mode | S_IFREG, 0);
+}
+
+static int gfsInodeMkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+{
+    int ret = gfsInodeMknod(dir, dentry, mode | S_IFDIR, 0);
+	if (!ret)
+    {
+		inc_nlink(dir);
+    }
+	return ret;
+}
+
+static int gfsInodeSymlink(struct inode *dir, struct dentry *dentry, const char *symname)
+{
+    struct inode *inode = gfsGetInode(dir->i_sb, dir, S_IFLNK | S_IRWXUGO, 0);
+    int err = -ENOSPC;
+
+    if (inode)
+    {
+        int len = strlen(symname) + 1;
+        err = page_symlink(inode, symname, len);
+        if (!err)
+        {
+            d_instantiate(dentry, inode);
+            dget(dentry);
+            dir->i_mtime = dir->i_atime = dir->i_ctime = CURRENT_TIME;
+        }
+        else 
+        {
+            iput(inode);
+        }
+    }
+
+    return err;
+}
+
+
+
 
 
 // INIT
