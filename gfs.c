@@ -5,6 +5,8 @@
 #include <linux/slab.h>
 #include <linux/romfs_fs.h>
 #include <linux/pagemap.h> 
+#include <asm/uaccess.h>
+#include <linux/vmalloc.h>
 
 #define GFS_MAGIC_NUMBER 0x13420228
 
@@ -82,6 +84,12 @@ void gfsKillSb(struct super_block *sb)
 static unsigned long gfsMMUGetUnmappedArea(struct file *file,
 		unsigned long addr, unsigned long len, unsigned long pgoff,
 		unsigned long flags);
+static int file_read(struct file *file, char *buf, int count, loff_t *loff);
+static int file_write(struct file *file, const char *buf, int count, loff_t *loff);
+const int MEM_CAPACITY = 1024;
+int next_message_first_idx = 0;
+int idx_to_read = 0;
+char *message_mem;
 
 static struct file_operations gfsFileOps = {
     .read_iter = generic_file_read_iter,
@@ -89,10 +97,66 @@ static struct file_operations gfsFileOps = {
     .mmap = generic_file_mmap,
     .fsync = generic_file_fsync,
     .splice_read = generic_file_splice_read,
-    .splice_write = iter_file_splice_write,
+    // .splice_write = iter_file_splice_write,
     .llseek = generic_file_llseek,
-    .get_unmapped_area = gfsMMUGetUnmappedArea,
+    // .get_unmapped_area = gfsMMUGetUnmappedArea,
+    .write = file_write,
+    .read = file_read,
 };
+
+static int file_read(struct file *file, char *buffer, int count, loff_t *loff)
+{
+    static int finished = 0;
+    if (finished)
+    {
+    	finished = 0;
+    	return 0;
+    }
+    finished = 1;
+
+    /* Перевод индекса на первый элемент */
+    if (idx_to_read >= next_message_first_idx)
+    {
+    	printk(KERN_INFO "GFS -- Returning to the begining! \n");
+        idx_to_read = 0;
+    } 
+
+    int len = sprintf(buffer, "%s\n", &message_mem[idx_to_read]);
+    if (len == 1)
+    {
+    	sprintf(buffer, "%s\n", "<EMPTY-GFS>");
+    	len = strlen("<EMPTY-GFS>\n");
+    }
+    else
+    {
+    	idx_to_read += len;
+    }
+    
+    return len;
+}
+
+static int file_write(struct file *file, const char *buffer, int count, loff_t *loff)
+{
+    int space_available = MEM_CAPACITY - next_message_first_idx + 1;
+
+    if (count > space_available)
+    {
+        printk(KERN_INFO "GFS -- NO MEM, CLEANING");
+        memset(message_mem, 0, MEM_CAPACITY);
+        next_message_first_idx = 0;
+        idx_to_read = 0;
+    }
+
+    if (copy_from_user(&message_mem[next_message_first_idx], buffer, count))
+    {
+        return -EFAULT;
+    }
+
+    next_message_first_idx += count;
+    message_mem[next_message_first_idx-1] = 0;
+
+    return count;
+}
 
 static unsigned long gfsMMUGetUnmappedArea(struct file *file,
 		unsigned long addr, unsigned long len, unsigned long pgoff,
@@ -239,6 +303,12 @@ static int __init initFS(void)
 {
     printk(KERN_INFO "GFS Starting to create fs!\n");
 
+    message_mem = (char*) vmalloc(MEM_CAPACITY);
+    if (!message_mem)
+    {
+        return -ENOMEM;
+    }
+
     int ret = register_filesystem(&gfsType);
 
     if (ret != 0)
@@ -254,6 +324,8 @@ static int __init initFS(void)
 static void __exit exitFS(void)
 {
     printk(KERN_INFO "GFS Starting to remove module!\n");
+
+    vfree(message_mem);
 
     int ret = unregister_filesystem(&gfsType);
     if (ret != 0)
